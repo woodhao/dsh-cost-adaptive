@@ -187,7 +187,11 @@ const usageSeen = new Map() // file path -> last folded usage fingerprint
 function applyUsage(stats, usage, file) {
   const cur = stats.tokens || { input: 0, cached: 0, output: 0, lastInput: 0, lastCached: 0, lastOutput: 0 }
   const last = usageSeen.get(file) || { input: 0, cached: 0, output: 0 }
-  const input = usage.input_tokens ?? 0
+  // Rollout usage is mutually exclusive: `input_tokens` counts only the
+  // non-cached part and `cached_input_tokens` is separate, while the ledger's
+  // `input` (like the harness) includes cache hits. Fold the full input so
+  // cached <= input holds and "fresh input" (input - cached) stays meaningful.
+  const input = (usage.input_tokens ?? 0) + (usage.cached_input_tokens ?? 0)
   const cached = usage.cached_input_tokens ?? 0
   const output = usage.output_tokens ?? 0
   const dInput = Math.max(0, input - last.input)
