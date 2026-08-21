@@ -8,12 +8,14 @@ DeepSeek Harness 的自适应上下文成本守卫插件。它观察真实的会
 
 ## 安装
 
-本插件已在 GitHub 开源，但尚未发布到 npm registry。通过 GitHub 安装：
+已发布到 npm registry：
 
 ```sh
-npm install github:woodhao/dsh-cost-adaptive
-# 或：pnpm add github:woodhao/dsh-cost-adaptive
+npm install dsh-cost-adaptive
+# 或：pnpm add dsh-cost-adaptive
 ```
+
+源码与问题追踪：[github.com/woodhao/dsh-cost-adaptive](https://github.com/woodhao/dsh-cost-adaptive)。
 
 Peer 依赖（均已发布到 npm）：
 
