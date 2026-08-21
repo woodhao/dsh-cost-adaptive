@@ -89,6 +89,10 @@ Zero tokens while nothing is learned (the section is absent, so the prompt is by
 
 The guidance section is a function of the statistics snapshot, so its text changes only when the snapshot changes; unchanged assemblies reuse the exact previous prompt prefix and do not invalidate existing KV-cache entries.
 
+## Codex integration
+
+The same learned cost guard can run inside Codex (OpenAI's coding agent), sharing the same `stats.json` ledger. A native-hook bridge covers Codex CLI, and a sidecar watcher covers the desktop app (which does not run hooks). See [codex/](codex/README.md) for install and usage.
+
 ## Development
 
 ```sh

@@ -89,6 +89,10 @@ Cost guidance: oversized tool results waste context. Keep output small: grep (3 
 
 指导 section 是统计快照的函数，因此其文本仅在快照变化时变化；未变化的组装精确复用上一次的提示前缀，不会使既有 KV-cache 条目失效。
 
+## Codex 集成
+
+同一套学习型省钱机制可以在 Codex（OpenAI 的编程智能体）里运行，共用同一个 `stats.json` 账本。原生 hook 桥覆盖 Codex 命令行版，旁路监视器覆盖桌面版（桌面版不运行 hooks）。安装与用法见 [codex/](codex/README.zh.md)。
+
 ## 开发
 
 ```sh
