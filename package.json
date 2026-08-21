@@ -1,6 +1,6 @@
 {
   "name": "dsh-cost-adaptive",
-  "version": "0.1.0-rc.5",
+  "version": "0.1.0-rc.6",
   "description": "Self-adapting context-cost guard: observes tool-result and turn usage, aggregates waste statistics across sessions, and injects learned cost guidance into the system prompt",
   "type": "module",
   "main": "lib/index.js",
@@ -18,8 +18,7 @@
     "./package.json": "./package.json"
   },
   "files": [
-    "lib/index.js",
-    "lib/invariant.js",
+    "lib/**/*.js",
     "lib/**/*.d.ts",
     "lib/**/*.d.ts.map",
     "lib/**/*.js.map",
