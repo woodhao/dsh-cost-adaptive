@@ -108,6 +108,7 @@ const GUIDANCE_ORDER = 150
 interface TurnBuffer {
   tools: Map<string, number>
   newInputTokens: number
+  cachedInputTokens: number
   outputTokens: number
   turnEndedAt: number
 }
@@ -202,7 +203,12 @@ export function apply(ctx: Context, config: Config): void {
     }
     const sessionIsNew = !sessionsSeen.has(session.id)
     if (sessionIsNew) sessionsSeen = new Set(sessionsSeen).add(session.id)
-    const record: TurnRecord = { newInputTokens: buffer.newInputTokens, outputTokens: buffer.outputTokens, at }
+    const record: TurnRecord = {
+      newInputTokens: buffer.newInputTokens,
+      cachedInputTokens: buffer.cachedInputTokens,
+      outputTokens: buffer.outputTokens,
+      at,
+    }
     stats = applyTurn(stats, record, sessionIsNew)
     turnsSinceFlush += 1
     applyAdaptivePrunerThreshold()
@@ -264,6 +270,7 @@ export function apply(ctx: Context, config: Config): void {
     } else if (event.type === 'assistant/message' && event.data.usage !== undefined) {
       buffer ??= freshBuffer()
       buffer.newInputTokens += event.data.usage.inputTokens
+      buffer.cachedInputTokens += event.data.usage.cacheReadTokens ?? 0
       buffer.outputTokens += event.data.usage.outputTokens
       turnBuffers.set(session, buffer)
     } else if (event.type === 'feedback/record') {
@@ -336,7 +343,7 @@ function toolsNamedInFeedback(text: string, tools: Record<string, ToolStats>): s
 
 /** A fresh per-turn observation buffer. */
 function freshBuffer(): TurnBuffer {
-  return { tools: new Map(), newInputTokens: 0, outputTokens: 0, turnEndedAt: Date.now() }
+  return { tools: new Map(), newInputTokens: 0, cachedInputTokens: 0, outputTokens: 0, turnEndedAt: Date.now() }
 }
 
 /**

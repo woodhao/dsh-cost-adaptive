@@ -1,5 +1,5 @@
 /**
- * Versioned cross-session cost statistics for `dsh-cost-adaptive`.
+ * Versioned cross-session cost statistics for `@deepseek-ai/dsh-cost-adaptive`.
  *
  * The store owns one immutable snapshot per flush: load merges any existing
  * file, `applyTurn` folds one scored turn into the snapshot, and `save` writes
@@ -28,6 +28,34 @@ export interface ToolStats {
   feedback: number
 }
 
+/** Cumulative token usage across sessions (model request accounting). */
+export interface TokenTotals {
+  /** Total input tokens sent (including cache reads). */
+  input: number
+  /** Input tokens served from the provider's prompt cache. */
+  cached: number
+  /** Total output tokens produced. */
+  output: number
+  /** Input tokens of the most recently recorded turn. */
+  lastInput: number
+  /** Cached input tokens of the most recently recorded turn. */
+  lastCached: number
+  /** Output tokens of the most recently recorded turn. */
+  lastOutput: number
+}
+
+/** One turn's scored usage deltas, ready to be recorded. */
+export interface TurnRecord {
+  /** New (uncached) input tokens written by this turn's requests. */
+  newInputTokens: number
+  /** Input tokens this turn read from the provider's prompt cache. */
+  cachedInputTokens?: number
+  /** Output tokens produced by this turn's requests. */
+  outputTokens: number
+  /** Epoch millis of the turn end. */
+  at: number
+}
+
 /** One scored tool result folded into the store. */
 export interface ToolObservation {
   /** Tool name (e.g. `grep`, `read`, `bash`). */
@@ -49,6 +77,8 @@ export interface CostStats {
   turns: number
   /** Aggregated per-tool observations, keyed by tool name. */
   tools: Record<string, ToolStats>
+  /** Cumulative token usage across sessions. */
+  tokens?: TokenTotals
 }
 
 /**
@@ -138,13 +168,23 @@ export interface TurnRecord {
  * @returns a new snapshot with the turn recorded.
  */
 export function applyTurn(stats: CostStats, record: TurnRecord, sessionIsNew: boolean): CostStats {
-  void record.newInputTokens
-  void record.outputTokens
-  void record.at
+  const priorTokens = stats.tokens ?? { input: 0, cached: 0, output: 0, lastInput: 0, lastCached: 0, lastOutput: 0 }
+  const cached = record.cachedInputTokens ?? 0
+  // `newInputTokens` already includes the cached portion (providers report
+  // total input with cache hits inside it); cached is the subset that hit.
+  const tokens: TokenTotals = {
+    input: priorTokens.input + record.newInputTokens,
+    cached: priorTokens.cached + cached,
+    output: priorTokens.output + record.outputTokens,
+    lastInput: record.newInputTokens,
+    lastCached: cached,
+    lastOutput: record.outputTokens,
+  }
   return {
     ...stats,
     sessions: stats.sessions + (sessionIsNew ? 1 : 0),
     turns: stats.turns + 1,
+    tokens,
   }
 }
 
