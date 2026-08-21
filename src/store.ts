@@ -246,17 +246,19 @@ export interface TurnRecord {
 export function applyTurn(stats: CostStats, record: TurnRecord, sessionIsNew: boolean): CostStats {
   const priorTokens = stats.tokens ?? { input: 0, cached: 0, output: 0, lastInput: 0, lastCached: 0, lastOutput: 0 }
   const cached = record.cachedInputTokens ?? 0
-  // `newInputTokens` already includes the cached portion (providers report
-  // total input with cache hits inside it); cached is the subset that hit.
+  // Providers report `newInputTokens` excluding the cached portion (the
+  // DeepSeek provider subtracts cache reads from prompt tokens), so the
+  // ledger's `input` folds both: cached is a strict subset of input.
+  const input = record.newInputTokens + cached
   const tokens: TokenTotals = {
-    input: priorTokens.input + record.newInputTokens,
+    input: priorTokens.input + input,
     cached: priorTokens.cached + cached,
     output: priorTokens.output + record.outputTokens,
-    lastInput: record.newInputTokens,
+    lastInput: input,
     lastCached: cached,
     lastOutput: record.outputTokens,
   }
-  const sample: TurnSample = { input: record.newInputTokens, cached, output: record.outputTokens, at: record.at }
+  const sample: TurnSample = { input, cached, output: record.outputTokens, at: record.at }
   return {
     ...stats,
     sessions: stats.sessions + (sessionIsNew ? 1 : 0),

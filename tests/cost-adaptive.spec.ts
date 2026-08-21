@@ -137,18 +137,19 @@ describe('cost-adaptive store (pure functions)', () => {
     stats = applyTurn(stats, { newInputTokens: 200, cachedInputTokens: 50, outputTokens: 20, at: 2 }, false)
     expect(stats.sessions).toBe(1)
     expect(stats.turns).toBe(2)
-    // newInputTokens already includes the cached portion; cached is the subset.
+    // newInputTokens excludes the cached portion; input folds both in, so
+    // cached is always a subset of input.
     expect(stats.tokens).toEqual({
-      input: 300,
+      input: 350,
       cached: 50,
       output: 30,
-      lastInput: 200,
+      lastInput: 250,
       lastCached: 50,
       lastOutput: 20,
     })
     expect(stats.recentTurns).toEqual([
       { input: 100, cached: 0, output: 10, at: 1 },
-      { input: 200, cached: 50, output: 20, at: 2 },
+      { input: 250, cached: 50, output: 20, at: 2 },
     ])
   })
 
