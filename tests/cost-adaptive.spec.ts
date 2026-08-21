@@ -1,5 +1,5 @@
 /**
- * Unit + real-load-path coverage for @deepseek-ai/dsh-cost-adaptive.
+ * Unit + real-load-path coverage for dsh-cost-adaptive.
  *
  * The pure store functions and file helpers are tested directly; the plugin's
  * observation pipeline is exercised through a real session-event stream so the
@@ -21,7 +21,7 @@ import SettingsProvider from '@deepseek-ai/dsh-settings'
 import type { SettingsNamespace } from '@deepseek-ai/dsh-settings'
 import TokenMeter from '@deepseek-ai/dsh-token-meter'
 import ToolResultPruner from '@deepseek-ai/dsh-compaction-tool-result-pruner'
-import * as costAdaptive from '@deepseek-ai/dsh-cost-adaptive'
+import * as costAdaptive from 'dsh-cost-adaptive'
 import {
   applyFeedback,
   applyObservation,
@@ -30,8 +30,8 @@ import {
   deriveGuidance,
   derivePrunerThreshold,
   emptyStats,
-} from '@deepseek-ai/dsh-cost-adaptive'
-import type { CostStats } from '@deepseek-ai/dsh-cost-adaptive'
+} from 'dsh-cost-adaptive'
+import type { CostStats } from 'dsh-cost-adaptive'
 
 /** A usage record the plugin reads from `assistant/message`. */
 const USAGE: TokenUsage = { inputTokens: 500, outputTokens: 40, cacheReadTokens: 1000, cacheWriteTokens: 0 }

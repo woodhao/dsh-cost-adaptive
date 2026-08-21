@@ -1,13 +1,13 @@
 /**
- * Package-owned invariant companion for `@deepseek-ai/dsh-cost-adaptive`.
- * @module @deepseek-ai/dsh-cost-adaptive/invariant
+ * Package-owned invariant companion for `dsh-cost-adaptive`.
+ * @module dsh-cost-adaptive/invariant
  */
 
 /* jscpd:ignore-start */
 import type { Context } from '@deepseek-ai/cordis'
 import type { InvariantInstaller } from '@deepseek-ai/dsh-invariants'
 
-const PACKAGE_NAME = '@deepseek-ai/dsh-cost-adaptive'
+const PACKAGE_NAME = 'dsh-cost-adaptive'
 
 /** Cordis companion plugin name. */
 export const name = 'cost-adaptive-invariant'

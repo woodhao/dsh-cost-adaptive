@@ -1,12 +1,12 @@
 /**
- * Versioned cross-session cost statistics for `@deepseek-ai/dsh-cost-adaptive`.
+ * Versioned cross-session cost statistics for `dsh-cost-adaptive`.
  *
  * The store owns one immutable snapshot per flush: load merges any existing
  * file, `applyTurn` folds one scored turn into the snapshot, and `save` writes
  * atomically. All mutation happens on copies so a failed write never corrupts
  * the in-memory state.
  *
- * @module @deepseek-ai/dsh-cost-adaptive/store
+ * @module dsh-cost-adaptive/store
  */
 
 /** Version of the on-disk statistics schema. Bump on any breaking format change. */

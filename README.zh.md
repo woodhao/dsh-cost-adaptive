@@ -32,7 +32,7 @@ Peer 依赖（均已发布到 npm）：
 
 ```yaml
 - id: cost-adaptive
-  name: '@deepseek-ai/dsh-cost-adaptive'
+  name: 'dsh-cost-adaptive'
   config:
     minCalls: 3
 ```

@@ -12,7 +12,7 @@
  * characters, and `deriveGuidance` turns the current snapshot into lines the
  * model can act on. User configuration (composition entry or the
  * `cost-adaptive` settings section) always wins over the learned layer.
- * @module @deepseek-ai/dsh-cost-adaptive
+ * @module dsh-cost-adaptive
  */
 
 import { readFile } from 'node:fs/promises'

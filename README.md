@@ -32,7 +32,7 @@ A function/namespace plugin (`name` / `inject` / `apply`), not a service. It con
 
 ```yaml
 - id: cost-adaptive
-  name: '@deepseek-ai/dsh-cost-adaptive'
+  name: 'dsh-cost-adaptive'
   config:
     minCalls: 3
 ```

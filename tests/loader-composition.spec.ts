@@ -8,7 +8,7 @@ import Loader from '@deepseek-ai/cordis-plugin-loader'
 import Include from '@deepseek-ai/cordis-plugin-include'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import SessionStore from '@deepseek-ai/dsh-session'
-import * as costAdaptive from '@deepseek-ai/dsh-cost-adaptive'
+import * as costAdaptive from 'dsh-cost-adaptive'
 
 let root: string | undefined
 let context: Context | undefined
@@ -32,7 +32,7 @@ async function loadYaml(lines: readonly string[]): Promise<{ context: Context; r
   const modules = new Map<string, unknown>([
     ['@deepseek-ai/dsh-system-prompt', SystemPrompt],
     ['@deepseek-ai/dsh-session', SessionStore],
-    ['@deepseek-ai/dsh-cost-adaptive', costAdaptive],
+    ['dsh-cost-adaptive', costAdaptive],
   ])
   context.loader.internal = {
     version: 'v2',
@@ -55,7 +55,7 @@ describe('real Loader composition', () => {
     const { context: loaded } = await loadYaml([
       "- name: '@deepseek-ai/dsh-system-prompt'",
       "- name: '@deepseek-ai/dsh-session'",
-      "- name: '@deepseek-ai/dsh-cost-adaptive'",
+      "- name: 'dsh-cost-adaptive'",
       '  config:',
       '    statsPath: ' + JSON.stringify(join(statsDir, 'stats.json')),
       '    minCalls: 1',

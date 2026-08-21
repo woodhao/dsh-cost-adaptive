@@ -1,5 +1,5 @@
 {
-  "name": "@deepseek-ai/dsh-cost-adaptive",
+  "name": "dsh-cost-adaptive",
   "version": "0.1.0-rc.5",
   "description": "Self-adapting context-cost guard: observes tool-result and turn usage, aggregates waste statistics across sessions, and injects learned cost guidance into the system prompt",
   "type": "module",
@@ -76,7 +76,7 @@
     "@types/node": "^22.20.0",
     "typescript": "^6.0.3",
     "vitest": "^4.1.8",
-    "@deepseek-ai/dsh-cost-adaptive": "link:."
+    "dsh-cost-adaptive": "link:."
   },
   "engines": {
     "node": "^22.19.0 || >=24.0.0"
