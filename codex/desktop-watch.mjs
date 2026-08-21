@@ -41,9 +41,14 @@ function mapTool(name) {
   return name || 'unknown'
 }
 
-/** Parse a JSONL chunk, returning observable tool results. */
+/**
+ * Parse a JSONL chunk, returning observable tool results plus any token
+ * usage snapshot (per-turn cumulative counts from token_count events).
+ * @returns {{observations: Array<{tool: string, output: string}>, usage: object|null}}
+ */
 function parseChunk(text) {
   const pairs = new Map() // call_id -> { tool, output }
+  let usage = null // last total_token_usage seen in this chunk
   for (const line of text.split('\n')) {
     if (!line.trim()) continue
     let d
@@ -52,8 +57,12 @@ function parseChunk(text) {
     } catch {
       continue
     }
-    if (d.type !== 'response_item') continue
     const p = d.payload || {}
+    if (d.type === 'event_msg' && p.type === 'token_count' && p.info?.total_token_usage) {
+      usage = p.info.total_token_usage
+      continue
+    }
+    if (d.type !== 'response_item') continue
     if (p.type === 'function_call' && p.name) {
       pairs.set(p.call_id, { tool: mapTool(p.name), output: '' })
     } else if (p.type === 'function_call_output' && pairs.has(p.call_id)) {
@@ -61,7 +70,10 @@ function parseChunk(text) {
       entry.output = typeof p.output === 'string' ? p.output : ''
     }
   }
-  return [...pairs.values()].filter(e => e.output.length > 0)
+  return {
+    observations: [...pairs.values()].filter(e => e.output.length > 0),
+    usage,
+  }
 }
 
 /** Load persisted byte offsets. */
@@ -127,28 +139,74 @@ async function processNew() {
       continue
     }
     TMP.set(file, st.size)
-    const observations = parseChunk(text)
-    if (observations.length > 0) {
-      const stats = await loadStats(statsPath()).catch(() => emptyStats())
-      let next = stats
-      for (const o of observations) {
-        next = applyObservation(next, {
-          tool: o.tool,
-          chars: o.output.length,
-          thresholdChars: CONFIG.thresholdChars,
-          at: Date.now(),
-        })
-      }
+    const { observations, usage } = parseChunk(text)
+    const stats = await loadStats(statsPath()).catch(() => emptyStats())
+    let next = stats
+    let didChange = false
+    for (const o of observations) {
+      next = applyObservation(next, {
+        tool: o.tool,
+        chars: o.output.length,
+        thresholdChars: CONFIG.thresholdChars,
+        at: Date.now(),
+      })
+      didChange = true
+    }
+    if (usage) {
+      next = applyUsage(next, usage, file)
+      didChange = true
+    }
+    if (didChange) {
       await persist(next)
       await updateGuidance(next)
-      await appendHistory(observations)
+      if (observations.length > 0) await appendHistory(observations)
       changed = true
       const t = new Date().toLocaleTimeString('zh-CN', { hour12: false })
-      console.log(`[${t}] 记账: ${observations.map(o => `${o.tool}(${o.output.length})`).join(', ')}`)
+      const bits = []
+      if (observations.length > 0) bits.push(observations.map(o => `${o.tool}(${o.output.length})`).join(', '))
+      if (usage) bits.push(`tokens in=${usage.input_tokens} cached=${usage.cached_input_tokens} out=${usage.output_tokens}`)
+      console.log(`[${t}] 记账: ${bits.join(' · ')}`)
     }
   }
   if (changed) await saveOffsets()
   return changed
+}
+
+const usageSeen = new Map() // file path -> last folded usage fingerprint
+
+/**
+ * Fold a token usage snapshot into the ledger's cumulative token counters.
+ * Usage is cumulative per session (the app emits growing totals), so only
+ * the delta since the last folded snapshot for the same file counts; the
+ * per-file fingerprint map keeps restarts from double-counting.
+ * @param {object} stats - ledger snapshot.
+ * @param {object} usage - {input_tokens, cached_input_tokens, output_tokens}.
+ * @param {string} file - rollout file the snapshot came from.
+ * @returns {object} updated ledger.
+ */
+function applyUsage(stats, usage, file) {
+  const cur = stats.tokens || { input: 0, cached: 0, output: 0, lastInput: 0, lastCached: 0, lastOutput: 0 }
+  const last = usageSeen.get(file) || { input: 0, cached: 0, output: 0 }
+  const input = usage.input_tokens ?? 0
+  const cached = usage.cached_input_tokens ?? 0
+  const output = usage.output_tokens ?? 0
+  const dInput = Math.max(0, input - last.input)
+  const dCached = Math.max(0, cached - last.cached)
+  const dOutput = Math.max(0, output - last.output)
+  if (dInput === 0 && dCached === 0 && dOutput === 0) return stats
+  usageSeen.set(file, { input, cached, output })
+  return {
+    ...stats,
+    tokens: {
+      ...cur,
+      input: cur.input + dInput,
+      cached: cur.cached + dCached,
+      output: cur.output + dOutput,
+      lastInput: input,
+      lastCached: cached,
+      lastOutput: output,
+    },
+  }
 }
 
 /** Per-observation history file, for trend display in dsh-cost-stats. */
@@ -194,8 +252,14 @@ async function updateGuidance(stats) {
     '',
     ...lines.map(l => `* ${l}`),
     '',
-  ].join('\n')
-  await writeFile(path, body, { mode: 0o600 })
+  ]
+  const t = stats.tokens
+  if (t && t.input > 0) {
+    const rate = Math.round((t.cached / t.input) * 100)
+    body.push(`缓存命中率 ${rate}%：保持提示词稳定、避免重复插入大段新内容，可提高缓存命中、显著降低成本。`)
+    body.push('')
+  }
+  await writeFile(path, body.join('\n'), { mode: 0o600 })
 }
 
 /** Atomic write (tmp + rename), mirroring the plugin's persist. */
@@ -209,16 +273,22 @@ async function persist(stats) {
 
 // Single-instance guard: refuse to start when another watcher is alive, so a
 // second launch (or launchd + manual) can never double-record the same bytes.
+// Only the instance that actually holds the lock may unlink it on exit.
 const LOCK_PATH = () => `${statsPath()}.desktop-watch.lock`
 async function acquireLock() {
   const { readFile: rf, writeFile: wf, unlink } = await import('node:fs/promises')
+  let held = false
+  process.on('exit', () => {
+    if (!held) return
+    try { unlink(LOCK_PATH()) } catch { /* gone */ }
+  })
   try {
     const pid = Number((await rf(LOCK_PATH(), 'utf8')).trim())
     if (pid > 0) {
       try {
         process.kill(pid, 0) // alive?
         console.error(`⚠️ 监视器已在运行（PID ${pid}），本实例退出。`)
-        process.exit(0)
+        process.exit(1)
       } catch {
         // stale lock — continue
       }
@@ -226,7 +296,7 @@ async function acquireLock() {
   } catch { /* no lock yet */ }
   await mkdir(dirname(LOCK_PATH()), { recursive: true, mode: 0o700 })
   await wf(LOCK_PATH(), String(process.pid), { mode: 0o600 })
-  process.on('exit', () => { try { unlink(LOCK_PATH()) } catch { /* gone */ } })
+  held = true
 }
 
 // Bootstrap: load offsets, then process only bytes never seen before.

@@ -44,6 +44,16 @@ export function render(stats) {
   }
   lines.push('')
   lines.push(`  已学习: ${rows.filter(r => r.oversized > 0 || r.feedback > 0).length} 个浪费大户`)
+
+  // Token usage block: input/cached/output cumulative, with cache-hit rate.
+  const t = stats.tokens
+  if (t && (t.input > 0 || t.output > 0)) {
+    const rate = t.input > 0 ? Math.round((t.cached / t.input) * 100) : 0
+    lines.push('')
+    lines.push('  Token 用量（累计）:')
+    lines.push(`    输入 ${fmt(t.input).padStart(10)} · 缓存命中 ${fmt(t.cached).padStart(10)}（${rate}%）`)
+    lines.push(`    输出 ${fmt(t.output).padStart(10)}`)
+  }
   return lines.join('\n')
 }
 
@@ -70,13 +80,14 @@ if (process.argv[1] !== undefined && realpathSync(process.argv[1]) === fileURLTo
 }
 
 /**
- * Trend summary from the observation history: average output size of the
- * most recent 10 observations vs the 10 before them, per oversized tool.
- * @returns {Promise<string>} trend block, or '' when no history yet.
+ * Trend summary from the observation history, per tool: average output size
+ * and oversized share of the most recent 10 observations vs the 10 before
+ * them. The oversized share is the honest savings signal — smaller recent
+ * outputs (or fewer oversized ones) mean the guidance is working.
+ * @returns {Promise<string>} trend block, or '' when not enough history yet.
  */
-async function renderTrend() {
+export async function renderTrend() {
   const { readFile } = await import('node:fs/promises')
-  const { join } = await import('node:path')
   const { homedir } = await import('node:os')
   const historyPath = join(dirname(statsPath()), 'history.jsonl')
   let text
@@ -94,20 +105,34 @@ async function renderTrend() {
   }
   if (rows.length < 4) return ''
   const fmt = n => n.toLocaleString('en-US')
-  const avg = arr => Math.round(arr.reduce((s, r) => s + r.chars, 0) / arr.length)
-  const recent = rows.slice(-10)
-  const earlier = rows.slice(-20, -10)
-  const recentAvg = avg(recent)
-  const earlierAvg = earlier.length ? avg(earlier) : null
-  const delta = earlierAvg === null ? null : Math.round(((recentAvg - earlierAvg) / earlierAvg) * 100)
-  const lines = [
-    '',
-    '  输出趋势（平均每次输出字符）:',
-    `    最近 10 次: ${fmt(recentAvg)}`,
-  ]
-  if (delta !== null) {
-    const arrow = delta <= 0 ? '↓ 变小了，省钱生效' : '↑ 变大了，提醒还没压住'
-    lines.push(`    之前 10 次: ${fmt(earlierAvg)}（${delta > 0 ? '+' : ''}${delta}% ${arrow}）`)
+  const avg = arr => arr.length ? Math.round(arr.reduce((s, r) => s + r.chars, 0) / arr.length) : 0
+  const overShare = (arr, thr) => `${arr.filter(r => r.chars > thr).length}/${arr.length}`
+  const thr = 8192
+  // Group by tool; only tools with at least 4 observations get a trend line.
+  const byTool = new Map()
+  for (const r of rows) {
+    if (!byTool.has(r.tool)) byTool.set(r.tool, [])
+    byTool.get(r.tool).push(r)
   }
+  const lines = ['', '  输出趋势（最近 10 次 vs 之前 10 次，按工具）:']
+  let any = false
+  for (const [tool, rs] of byTool) {
+    if (rs.length < 4) continue
+    any = true
+    const recent = rs.slice(-10)
+    const earlier = rs.slice(-20, -10)
+    const recentAvg = avg(recent)
+    const earlierAvg = earlier.length ? avg(earlier) : null
+    let bit = `  ${tool.padEnd(18)} 平均 ${fmt(recentAvg).padStart(6)} 字符 · 超大 ${overShare(recent, thr)}`
+    if (earlierAvg !== null && earlier.length >= 10) {
+      const delta = Math.round(((recentAvg - earlierAvg) / earlierAvg) * 100)
+      const overEarlier = overShare(earlier, thr)
+      const overDelta = recent.filter(r => r.chars > thr).length - earlier.filter(r => r.chars > thr).length
+      const arrow = overDelta < 0 || (overDelta === 0 && delta <= 0) ? '↓ 省钱生效' : '↑ 还没压住'
+      bit += ` → ${fmt(earlierAvg)} 字符 (${delta > 0 ? '+' : ''}${delta}%) · 超大 ${overEarlier} ${arrow}`
+    }
+    lines.push(bit)
+  }
+  if (!any) return ''
   return lines.join('\n')
 }

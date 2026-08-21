@@ -26,36 +26,10 @@ async function mtimeMs(path) {
   }
 }
 
-/** Trend block from history; '' when not enough data yet. */
+/** Trend block from status.mjs; '' when not enough data yet. */
 async function trendText() {
-  const { readFile } = await import('node:fs/promises')
-  let text
-  try {
-    text = await readFile(HISTORY_PATH(), 'utf8')
-  } catch {
-    return ''
-  }
-  const rows = []
-  for (const line of text.split('\n')) {
-    if (!line.trim()) continue
-    try {
-      rows.push(JSON.parse(line))
-    } catch { /* skip */ }
-  }
-  if (rows.length < 4) return ''
-  const fmt = n => n.toLocaleString('en-US')
-  const avg = arr => Math.round(arr.reduce((s, r) => s + r.chars, 0) / arr.length)
-  const recent = rows.slice(-10)
-  const earlier = rows.slice(-20, -10)
-  const recentAvg = avg(recent)
-  const earlierAvg = earlier.length ? avg(earlier) : null
-  const delta = earlierAvg === null ? null : Math.round(((recentAvg - earlierAvg) / earlierAvg) * 100)
-  const lines = ['', '  输出趋势（平均每次输出字符）:', `    最近 10 次: ${fmt(recentAvg)}`]
-  if (delta !== null) {
-    const arrow = delta <= 0 ? '↓ 变小了，省钱生效' : '↑ 变大了，提醒还没压住'
-    lines.push(`    之前 10 次: ${fmt(earlierAvg)}（${delta > 0 ? '+' : ''}${delta}% ${arrow}）`)
-  }
-  return lines.join('\n')
+  const { renderTrend } = await import('./status.mjs')
+  return renderTrend()
 }
 
 let lastStatsMtime = await mtimeMs(statsPath())
