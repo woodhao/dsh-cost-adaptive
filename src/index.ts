@@ -12,7 +12,7 @@
  * characters, and `deriveGuidance` turns the current snapshot into lines the
  * model can act on. User configuration (composition entry or the
  * `cost-adaptive` settings section) always wins over the learned layer.
- * @module dsh-cost-adaptive
+ * @module @deepseek-ai/dsh-cost-adaptive
  */
 
 import { readFile } from 'node:fs/promises'
@@ -35,6 +35,7 @@ import {
   deriveGuidance,
   derivePrunerThreshold,
   emptyStats,
+  setUserThreshold,
   STATS_VERSION,
 } from './store.ts'
 import type { CostStats, ToolStats, TurnRecord } from './store.ts'
@@ -46,6 +47,14 @@ import type {} from '@deepseek-ai/dsh-command-feedback'
 type ToolResultData = SessionEventMap['tool/result']
 
 export const name = 'cost-adaptive'
+
+/** Cost dashboard service exposed to the settings UI via Typert Remote. */
+import { CostStatsService } from './remote.ts'
+declare module '@deepseek-ai/cordis' {
+  interface Context {
+    costStats: CostStatsService
+  }
+}
 
 /** Services the plugin reads from the scoped context. */
 export const inject = ['systemPrompt']
@@ -183,7 +192,9 @@ export function apply(ctx: Context, config: Config): void {
   const callNames = new Map<string, string>()
 
   const statsPathOf = (): string => resolveConfig(currentConfig()).statsPath
-  const thresholdOf = (): number => resolveConfig(currentConfig()).thresholdChars
+  /** Threshold in force for one tool: a human override wins, else the configured base. */
+  const thresholdOf = (tool: string): number =>
+    stats.userThresholds?.[tool] ?? resolveConfig(currentConfig()).thresholdChars
 
   // Chain of promises that must complete before a turn settles: the durable
   // load first, then each turn's settlement in arrival order. A load failure
@@ -196,10 +207,9 @@ export function apply(ctx: Context, config: Config): void {
 
   /** Fold every buffered observation of one turn into the snapshot. */
   const settleTurn = (session: Session, buffer: TurnBuffer): void => {
-    const threshold = thresholdOf()
     const at = buffer.turnEndedAt
     for (const [tool, chars] of buffer.tools) {
-      stats = applyObservation(stats, { tool, chars, thresholdChars: threshold, at })
+      stats = applyObservation(stats, { tool, chars, thresholdChars: thresholdOf(tool), at })
     }
     const sessionIsNew = !sessionsSeen.has(session.id)
     if (sessionIsNew) sessionsSeen = new Set(sessionsSeen).add(session.id)
@@ -223,15 +233,21 @@ export function apply(ctx: Context, config: Config): void {
    */
   const applyAdaptivePrunerThreshold = (): void => {
     const pruner = ctx.get('toolResultPruner')
+    if (pruner === undefined) return
     // The adaptive driver requires the pruner's runtime threshold override
     // (`updateThresholds`); older published pruner versions lack it, so the
     // optional tightening silently no-ops until the pruner catches up.
-    if (pruner === undefined) return
     const update = (pruner as { updateThresholds?: (thresholds: unknown) => void }).updateThresholds
     if (typeof update !== 'function') return
+    const learned = derivePrunerThreshold(stats, pruner.config.thresholdChars)
+    const overrides = Object.values(stats.userThresholds ?? {})
+    // A human override tightens the global line at least as far as its own
+    // value: the pruner truncates to the strictest of the learned value and
+    // any pinned per-tool threshold. Overrides never loosen the learned line.
+    const effective = overrides.length > 0 ? Math.min(learned, ...overrides) : learned
     update({
       ...pruner.config,
-      thresholdChars: derivePrunerThreshold(stats, pruner.config.thresholdChars),
+      thresholdChars: effective,
     })
   }
 
@@ -324,6 +340,17 @@ export function apply(ctx: Context, config: Config): void {
     },
     onChange: () => {},
   })
+
+  // The cost dashboard: expose the live ledger snapshot to the settings UI.
+  // Service construction registers `costStats` on the context (cordis
+  // Service semantics); the read thunk keeps the card on the live state,
+  // and the threshold callbacks write through the same ledger and pruner
+  // path the learning layer uses.
+  new CostStatsService(ctx, () => stats, thresholdOf, (tool, thresholdChars) => {
+    stats = setUserThreshold(stats, tool, thresholdChars)
+    applyAdaptivePrunerThreshold()
+    persistNow()
+  })
 }
 
 /**
@@ -364,4 +391,4 @@ function resolveToolName(
 }
 
 export type { CostStats, ToolObservation, TurnRecord } from './store.ts'
-export { applyFeedback, applyObservation, applyTurn, codePointLength, deriveGuidance, derivePrunerThreshold, emptyStats, STATS_VERSION } from './store.ts'
+export { applyFeedback, applyObservation, applyTurn, codePointLength, deriveGuidance, derivePrunerThreshold, emptyStats, RECENT_TURNS, RECENT_WINDOW, setUserThreshold, STATS_VERSION } from './store.ts'

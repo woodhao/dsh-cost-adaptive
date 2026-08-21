@@ -6,13 +6,26 @@
  * atomically. All mutation happens on copies so a failed write never corrupts
  * the in-memory state.
  *
- * @module dsh-cost-adaptive/store
+ * @module @deepseek-ai/dsh-cost-adaptive/store
  */
 
 /** Version of the on-disk statistics schema. Bump on any breaking format change. */
 export const STATS_VERSION = 2
 
 /** Per-tool aggregated cost observations across sessions. */
+/** One scored tool result kept for the per-tool detail view (bounded window). */
+export interface RecentObservation {
+  /** Result size in code points. */
+  chars: number
+  /** Whether this result exceeded the threshold in force at that time. */
+  oversized: boolean
+  /** Epoch millis of the observation. */
+  at: number
+}
+
+/** How many recent observations one tool retains for the detail view. */
+export const RECENT_WINDOW = 12
+
 export interface ToolStats {
   /** Total tool calls observed. */
   calls: number
@@ -26,6 +39,8 @@ export interface ToolStats {
   lastSeen: number
   /** Explicit human confirmations that this tool wastes context (feedback events naming it). */
   feedback: number
+  /** Most recent scored results, newest last, for the detail view. */
+  recent: RecentObservation[]
 }
 
 /** Cumulative token usage across sessions (model request accounting). */
@@ -43,6 +58,21 @@ export interface TokenTotals {
   /** Output tokens of the most recently recorded turn. */
   lastOutput: number
 }
+
+/** One turn's token usage kept for the recent-rounds comparison view. */
+export interface TurnSample {
+  /** Input tokens of the turn (including cache reads). */
+  input: number
+  /** Input tokens served from the prompt cache. */
+  cached: number
+  /** Output tokens of the turn. */
+  output: number
+  /** Epoch millis of the turn end. */
+  at: number
+}
+
+/** How many recent turns the comparison view retains. */
+export const RECENT_TURNS = 10
 
 /** One turn's scored usage deltas, ready to be recorded. */
 export interface TurnRecord {
@@ -79,6 +109,14 @@ export interface CostStats {
   tools: Record<string, ToolStats>
   /** Cumulative token usage across sessions. */
   tokens?: TokenTotals
+  /** Most recent turns' token usage, newest last, for the comparison view. */
+  recentTurns?: TurnSample[]
+  /**
+   * Human-set per-tool threshold overrides in code points, keyed by tool
+   * name. A present key pins that tool's threshold regardless of what the
+   * learned layer would derive; absence means the learned value applies.
+   */
+  userThresholds?: Record<string, number>
 }
 
 /**
@@ -87,6 +125,37 @@ export interface CostStats {
  */
 export function emptyStats(): CostStats {
   return { version: STATS_VERSION, sessions: 0, turns: 0, tools: {} }
+}
+
+/**
+ * Set or clear a human threshold override for one tool and return a new
+ * snapshot. The input snapshot is not mutated. Setting to `null` clears the
+ * override so the learned layer governs again.
+ * @param stats - snapshot to modify.
+ * @param tool - tool whose threshold the human overrides.
+ * @param thresholdChars - override in code points, or `null` to clear it.
+ * @returns a new snapshot with the override applied.
+ */
+export function setUserThreshold(
+  stats: CostStats,
+  tool: string,
+  thresholdChars: number | null,
+): CostStats {
+  if (thresholdChars === null) {
+    if (stats.userThresholds === undefined || stats.userThresholds[tool] === undefined) return stats
+    const { [tool]: _removed, ...userThresholds } = stats.userThresholds
+    void _removed
+    if (Object.keys(userThresholds).length === 0) {
+      const { userThresholds: _rest, ...rest } = stats
+      void _rest
+      return rest
+    }
+    return { ...stats, userThresholds }
+  }
+  return {
+    ...stats,
+    userThresholds: { ...stats.userThresholds, [tool]: thresholdChars },
+  }
 }
 
 /**
@@ -108,22 +177,29 @@ export function codePointLength(value: string): number {
 export function applyObservation(stats: CostStats, observation: ToolObservation): CostStats {
   const next = { ...stats, tools: { ...stats.tools } }
   const prior = next.tools[observation.tool]
+  const observationEntry: RecentObservation = {
+    chars: observation.chars,
+    oversized: observation.chars > observation.thresholdChars,
+    at: observation.at,
+  }
   next.tools[observation.tool] = prior === undefined
     ? {
       calls: 1,
-      oversized: observation.chars > observation.thresholdChars ? 1 : 0,
+      oversized: observationEntry.oversized ? 1 : 0,
       totalChars: observation.chars,
       wasteChars: Math.max(0, observation.chars - observation.thresholdChars),
       lastSeen: observation.at,
       feedback: 0,
+      recent: [observationEntry],
     }
     : {
       calls: prior.calls + 1,
-      oversized: prior.oversized + (observation.chars > observation.thresholdChars ? 1 : 0),
+      oversized: prior.oversized + (observationEntry.oversized ? 1 : 0),
       totalChars: prior.totalChars + observation.chars,
       wasteChars: prior.wasteChars + Math.max(0, observation.chars - observation.thresholdChars),
       lastSeen: observation.at,
       feedback: prior.feedback,
+      recent: [...(prior.recent ?? []), observationEntry].slice(-RECENT_WINDOW),
     }
   return next
 }
@@ -180,11 +256,13 @@ export function applyTurn(stats: CostStats, record: TurnRecord, sessionIsNew: bo
     lastCached: cached,
     lastOutput: record.outputTokens,
   }
+  const sample: TurnSample = { input: record.newInputTokens, cached, output: record.outputTokens, at: record.at }
   return {
     ...stats,
     sessions: stats.sessions + (sessionIsNew ? 1 : 0),
     turns: stats.turns + 1,
     tokens,
+    recentTurns: [...(stats.recentTurns ?? []), sample].slice(-RECENT_TURNS),
   }
 }
 

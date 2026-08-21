@@ -1,0 +1,17 @@
+{
+  // Host-face aggregate for the Typert generator (mirrors the harness repo's
+  // tsconfig.host.json role). The generator discovers the package through the
+  // project reference below; the build itself runs tsc via tsconfig.build.json.
+  "compilerOptions": {
+    "target": "es2024",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
+    "types": ["node"],
+    "noEmit": true
+  },
+  "files": [],
+  "references": [{ "path": "./tsconfig.build.json" }]
+}

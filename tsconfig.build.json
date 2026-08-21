@@ -3,7 +3,7 @@
   "compilerOptions": {
     "noEmit": false,
     "rootDir": "src",
-    "outDir": "lib"
+    "outDir": "lib/types"
   },
   "include": ["src/**/*.ts"]
 }
