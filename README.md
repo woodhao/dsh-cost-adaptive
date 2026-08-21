@@ -8,9 +8,11 @@ It complements the DeepSeek Harness [compaction](https://github.com/deepseek-ai/
 
 ## Install
 
+The package is open source here on GitHub but not yet published to the npm registry. Install from GitHub:
+
 ```sh
-npm install @deepseek-ai/dsh-cost-adaptive
-# or: pnpm add @deepseek-ai/dsh-cost-adaptive
+npm install github:woodhao/dsh-cost-adaptive
+# or: pnpm add github:woodhao/dsh-cost-adaptive
 ```
 
 Peer requirements (all published on npm):
