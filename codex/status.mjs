@@ -48,7 +48,9 @@ export function render(stats) {
   // Token usage block: input/cached/output cumulative, with cache-hit rate.
   const t = stats.tokens
   if (t && (t.input > 0 || t.output > 0)) {
-    const rate = t.input > 0 ? Math.round((t.cached / t.input) * 100) : 0
+    // Side-channel accounting can report a cached subset larger than its
+  // input base; clamp at 100 like the dashboard does.
+    const rate = t.input > 0 ? Math.min(100, Math.round((t.cached / t.input) * 100)) : 0
     lines.push('')
     lines.push('  Token 用量（累计）:')
     lines.push(`    输入 ${fmt(t.input).padStart(10)} · 缓存命中 ${fmt(t.cached).padStart(10)}（${rate}%）`)
@@ -129,7 +131,7 @@ export async function renderTrend() {
       const overEarlier = overShare(earlier, thr)
       const overDelta = recent.filter(r => r.chars > thr).length - earlier.filter(r => r.chars > thr).length
       const arrow = overDelta < 0 || (overDelta === 0 && delta <= 0) ? '↓ 省钱生效' : '↑ 还没压住'
-      bit += ` → ${fmt(earlierAvg)} 字符 (${delta > 0 ? '+' : ''}${delta}%) · 超大 ${overEarlier} ${arrow}`
+      bit += ` · 之前 ${fmt(earlierAvg)} 字符 (${delta > 0 ? '+' : ''}${delta}%) · 超大 ${overEarlier} ${arrow}`
     }
     lines.push(bit)
   }
